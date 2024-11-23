@@ -1,0 +1,117 @@
+
+#Import the dataset and make the required transformations
+
+```{r}
+library(readxl)
+Book1 <- read_excel("Demographic_crisis_revisited.xlsx", 
+    sheet = "Data")
+head(Book1)
+```
+```{r}
+library(dplyr)
+
+Book1$log_GDP_growth <- log(Book1$`GDP_(constant US$)` / lag(Book1$`GDP_(constant US$)`))
+
+Book1$log_Capital_growth <- log(Book1$Capital / lag(Book1$Capital))
+
+Book1$log_Workers_growth <- log(Book1$Workers / lag(Book1$Workers))
+
+```
+
+#Granger causality tests and stationarity tests
+
+```{r}
+library(tseries)
+library(lmtest)
+Book1$workers_change<-(Book1$Workers-lag(Book1$Workers))/lag(Book1$Workers)
+Book1$Population_change<-(Book1$Population-lag(Book1$Population))/lag(Book1$Population)
+Book1$log_pop_change<-log(Book1$Population,lag(Book1$Population))
+#The Granger causality tests show that the population change causes changes in the logged differences in GDP with 8 lags behind
+grangertest(Book1$log_GDP_growth~Book1$log_pop_change,order=8)
+#The granger causality tests show that the population change causes changes in the logged differences of the workers with 5 laggs behind. To keep the statistical significance of the model we lag the population indicator 7 times. 
+grangertest(Book1$workers_change~Book1$Population_change,order=4)
+grangertest(Book1$workers_change~Book1$Population_change,order=5)
+#The ADF tests for unit roots provide evidence against the possible lack of stationarity of the time series
+adf.test(na.omit(Book1$log_GDP_growth),k=2)
+adf.test(na.omit(Book1$log_Capital_growth),k=1)
+adf.test(na.omit(Book1$log_Workers_growth),k=3)
+#The ACF plot further demonstrate that those series cannot be non-stationary because in all of them the autocorrelation either vanishes after the first lag or is not statistically significant
+acf(na.omit(Book1$log_Workers_growth))
+acf(na.omit(Book1$log_Capital_growth))
+acf(na.omit(Book1$log_GDP_growth))
+```
+
+#Table 1 models
+```{r}
+library(lmtest)
+Book1$lag_workers_ind <- Book1$log_Workers_growth*lag(Book1$Indicator,7)
+model1 <- lm(log_GDP_growth ~ log_Capital_growth + lag_workers_ind, data = Book1)
+model2<-lm(log_GDP_growth ~ log_Capital_growth +log_Workers_growth , data = Book1)
+model3<-lm(log_GDP_growth ~ log_Capital_growth +log_Workers_growth +lag_workers_ind, data = Book1)
+stargazer::stargazer(model1,model2,model3,type="text")
+#Table 2 adequacy checks
+bptest(model1)
+dwtest(model1)
+bptest(model2)
+dwtest(model2)
+bptest(model3)
+dwtest(model3)
+car::vif(model1)
+car::vif(model2)
+car::vif(model3)
+```
+
+#Robustness checks
+
+```{r}
+# Create Separate Crisis Dummies
+Book1$lag_workers_ind <- Book1$log_Workers_growth*lag(Book1$Indicator,7)
+Book1$Year<-as.numeric(Book1$Year)
+Book1$BulgarianCrisis <- ifelse(Book1$Year >= 1995 & Book1$Year <= 1997, 1, 0)
+Book1$FinancialCrisis <- ifelse(Book1$Year >= 2007 & Book1$Year <= 2009, 1, 0)
+Book1$CovidCrisis <- ifelse(Book1$Year >= 2020 & Book1$Year <= 2022, 1, 0)
+
+# Create Combined Crisis Dummy
+Book1$AnyCrisis <- ifelse(Book1$BulgarianCrisis == 1 | 
+                         Book1$FinancialCrisis == 1 | 
+                         Book1$CovidCrisis == 1, 1, 0)
+
+model4<-lm(log_GDP_growth ~ log_Capital_growth +log_Workers_growth +lag_workers_ind+BulgarianCrisis, data = Book1)
+model5<-lm(log_GDP_growth ~ log_Capital_growth +log_Workers_growth +lag_workers_ind+FinancialCrisis, data = Book1)
+model6<-lm(log_GDP_growth ~ log_Capital_growth +log_Workers_growth +lag_workers_ind+CovidCrisis, data = Book1)
+model7<-lm(log_GDP_growth ~ log_Capital_growth+lag_workers_ind+BulgarianCrisis, data = Book1)
+model8<-lm(log_GDP_growth ~ log_Capital_growth +lag_workers_ind+FinancialCrisis, data = Book1)
+model9<-lm(log_GDP_growth ~ log_Capital_growth +lag_workers_ind+CovidCrisis, data = Book1)
+model10<-lm(log_GDP_growth ~ log_Capital_growth+log_Workers_growth+BulgarianCrisis, data = Book1)
+model11<-lm(log_GDP_growth ~ log_Capital_growth +log_Workers_growth+FinancialCrisis, data = Book1)
+model12<-lm(log_GDP_growth ~ log_Capital_growth +log_Workers_growth+CovidCrisis, data = Book1)
+#Table 3 robustnes checks
+stargazer::stargazer(model4,model7,model8,model9,model10,model11,model12,type="text")
+
+```
+```{r}
+#Table 4 robustness checks 
+model_pensions<-lm(log_GDP_growth ~ log_Capital_growth +log_Workers_growth +lag_workers_ind+BulgarianCrisis+Delta_pensions, data = Book1)
+stargazer::stargazer(model4,model_pensions,type="text")
+bptest(model_pensions)
+dwtest(model_pensions)
+shapiro.test(model_pensions$residuals)
+stargazer::stargazer(model4,model7,model8,model10,model11,model_pensions,type="text")
+```
+```{r}
+library(sandwich)
+library(lmtest)
+#Robust SE to back up the claim in the paper
+model_pensions <- lm(log_GDP_growth ~ log_Capital_growth + log_Workers_growth + 
+                     lag_workers_ind + BulgarianCrisis + Delta_pensions, 
+                     data = Book1)
+
+robust_se <- vcovHC(model_pensions, type = "HC1")
+
+summary_robust <- coeftest(model_pensions, vcov = robust_se)
+
+print(summary_robust)
+```
+
+
+
