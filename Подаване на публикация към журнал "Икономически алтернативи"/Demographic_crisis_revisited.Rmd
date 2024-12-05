@@ -25,7 +25,7 @@ library(tseries)
 library(lmtest)
 Book1$workers_change<-(Book1$Workers-lag(Book1$Workers))/lag(Book1$Workers)
 Book1$Population_change<-(Book1$Population-lag(Book1$Population))/lag(Book1$Population)
-Book1$log_pop_change<-log(Book1$Population,lag(Book1$Population))
+Book1$log_pop_change<-log(Book1$Population/lag(Book1$Population))
 #The Granger causality tests show that the population change causes changes in the logged differences in GDP with 8 lags behind
 grangertest(Book1$log_GDP_growth~Book1$log_pop_change,order=8)
 #The granger causality tests show that the population change causes changes in the logged differences of the workers with 5 laggs behind. To keep the statistical significance of the model we lag the population indicator 7 times. 
